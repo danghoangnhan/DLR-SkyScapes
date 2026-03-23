@@ -10,10 +10,10 @@ Supports FC-DenseNet56, FC-DenseNet67, and FC-DenseNet103 configurations.
 import torch.nn as nn
 
 from .layers import DenseBlock, TransitionDown, TransitionUp
-from .hub import HubMixin
+from huggingface_hub import PyTorchModelHubMixin
 
 
-class FCDenseNet(nn.Module, HubMixin):
+class FCDenseNet(nn.Module, PyTorchModelHubMixin):
     """Fully Convolutional DenseNet for semantic segmentation.
 
     Architecture: Initial Conv -> [DenseBlock + TransitionDown] * n_pools
@@ -33,11 +33,6 @@ class FCDenseNet(nn.Module, HubMixin):
             Must have an `out_channels` attribute indicating output channel count.
     """
 
-    _hub_config_keys = [
-        "in_channels", "n_classes", "growth_rate",
-        "n_init_features", "n_layers_per_block", "dropout_p",
-    ]
-
     def __init__(
         self,
         in_channels=3,
@@ -54,7 +49,6 @@ class FCDenseNet(nn.Module, HubMixin):
             # FC-DenseNet103 default
             n_layers_per_block = [4, 5, 7, 10, 12, 15, 12, 10, 7, 5, 4]
 
-        # Store config for HubMixin
         self.in_channels = in_channels
         self.n_classes = n_classes
         self.n_init_features = n_init_features

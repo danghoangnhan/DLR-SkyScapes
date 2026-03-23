@@ -22,7 +22,7 @@ from .layers import (
 from .frsr import FRSR
 from .craspp import CRASPP
 from .lkbr import LKBR
-from .hub import HubMixin
+from huggingface_hub import PyTorchModelHubMixin
 
 
 class DecoderBranch(nn.Module):
@@ -79,7 +79,7 @@ class DecoderBranch(nn.Module):
         return self.final_conv(x)
 
 
-class SkyScapesNet(nn.Module, HubMixin):
+class SkyScapesNet(nn.Module, PyTorchModelHubMixin):
     """SkyScapesNet for fine-grained aerial semantic segmentation.
 
     Modified FC-DenseNet-103 with:
@@ -101,11 +101,6 @@ class SkyScapesNet(nn.Module, HubMixin):
         craspp_mid_channels: CRASPP internal channel width.
     """
 
-    _hub_config_keys = [
-        "in_channels", "n_classes", "growth_rate",
-        "n_init_features", "dropout_p", "craspp_mid_channels",
-    ]
-
     def __init__(
         self,
         in_channels=3,
@@ -116,7 +111,6 @@ class SkyScapesNet(nn.Module, HubMixin):
         craspp_mid_channels=256,
     ):
         super().__init__()
-        # Store config for HubMixin
         self.in_channels = in_channels
         self.n_classes = n_classes
         self.n_init_features = n_init_features

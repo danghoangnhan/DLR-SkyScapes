@@ -103,7 +103,7 @@ def test_hub_roundtrip():
             loaded_seg, _, _ = loaded(x)
 
     assert torch.allclose(orig_seg, loaded_seg, atol=1e-6), "Weights not preserved!"
-    print(f"[PASS] HubMixin save/load round-trip | Outputs match")
+    print(f"[PASS] PyTorchModelHubMixin save/load round-trip | Outputs match")
 
 
 if __name__ == "__main__":
