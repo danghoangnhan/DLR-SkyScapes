@@ -171,6 +171,7 @@ class SkyScapesNet(nn.Module, HubMixin):
         # --- Shared Decoder (first 2 upsampling steps, before branching) ---
         # These 2 steps use the deepest 2 skip connections (skip5, skip4)
         self.shared_ups = nn.ModuleList()
+        self.shared_lkbrs = nn.ModuleList()
         self.shared_fdbs = nn.ModuleList()
 
         upsample_channels = bottleneck_new_ch  # 240 from CRASPP
@@ -181,7 +182,9 @@ class SkyScapesNet(nn.Module, HubMixin):
             self.shared_ups.append(
                 UpsamplingBlock(upsample_channels, upsample_channels)
             )
-            concat_ch = upsample_channels + skip_ch
+            self.shared_lkbrs.append(LKBR(skip_ch))
+            # LKBR doubles skip channels via cat (original + refined)
+            concat_ch = upsample_channels + skip_ch * 2
             n_layers = n_layers_decoder[i]
             self.shared_fdbs.append(
                 FullyDenseBlock(n_layers, concat_ch, growth_rate, dropout_p)
@@ -239,12 +242,12 @@ class SkyScapesNet(nn.Module, HubMixin):
         _, out = self.craspp(out)          # CRASPP: new features only
 
         # --- Shared Decoder (2 upsampling steps) ---
-        for i, (ups, fdb) in enumerate(
-            zip(self.shared_ups, self.shared_fdbs)
+        for i, (ups, lkbr, fdb) in enumerate(
+            zip(self.shared_ups, self.shared_lkbrs, self.shared_fdbs)
         ):
-            skip = skips[-(i + 1)]   # skip5, skip4
-            out = ups(out, skip)     # Upsample + concat with skip
-            _, out = fdb(out)        # FDB: new features only
+            skip = lkbr(skips[-(i + 1)])  # LKBR: refine skip5, skip4
+            out = ups(out, skip)          # Upsample + concat with skip
+            _, out = fdb(out)             # FDB: new features only
 
         # --- Branch Decoder (3 upsampling steps each) ---
         # Remaining skips: skip3, skip2, skip1
