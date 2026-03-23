@@ -156,6 +156,7 @@ class FCDenseNet(nn.Module, HubMixin):
             in_channels=in_channels,
             n_classes=n_classes,
             n_layers_per_block=[4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+            growth_rate=12,
             **kwargs,
         )
 
@@ -164,7 +165,7 @@ class FCDenseNet(nn.Module, HubMixin):
         return cls(
             in_channels=in_channels,
             n_classes=n_classes,
-            n_layers_per_block=[4, 5, 7, 10, 12, 15, 12, 10, 7, 5, 4],
+            n_layers_per_block=[5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
             growth_rate=16,
             n_init_features=48,
             **kwargs,
