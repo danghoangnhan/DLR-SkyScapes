@@ -1,0 +1,20 @@
+[project]
+name = "skyscapesnet-dense"
+version = "0.1.0"
+description = "PyTorch implementation of SkyScapesNet for fine-grained aerial semantic segmentation (ICCV 2019)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0",
+    "torchvision>=0.15",
+    "numpy",
+    "Pillow",
+    "tqdm",
+    "huggingface-hub",
+    "albumentations>=1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pyyaml",
+]

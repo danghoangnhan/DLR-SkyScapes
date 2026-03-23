@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.claude/
+.venv/
+checkpoints/
+*.pth
+dist/
+*.egg-info/
+uv.lock
