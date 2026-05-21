@@ -9,10 +9,10 @@ import argparse
 import torch
 from torch.utils.data import DataLoader
 
-from models.fc_densenet import FCDenseNet
-from models.skyscapesnet import SkyScapesNet
-from data.skyscapes_dataset import SkyScapesDataset, NUM_CLASSES_DENSE, SKYSCAPES_DENSE_CLASSES
-from utils.metrics import ConfusionMatrix
+from skyscapesnet.models.fc_densenet import FCDenseNet
+from skyscapesnet.models.skyscapesnet import SkyScapesNet
+from skyscapesnet.data.skyscapes_dataset import SkyScapesDataset, NUM_CLASSES_DENSE, SKYSCAPES_DENSE_CLASSES
+from skyscapesnet.utils.metrics import ConfusionMatrix
 
 
 def parse_args():

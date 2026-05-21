@@ -18,15 +18,15 @@ from torch.utils.data import DataLoader, Dataset
 from torch.amp import autocast, GradScaler
 from tqdm import tqdm
 
-from models.fc_densenet import FCDenseNet
-from models.skyscapesnet import SkyScapesNet
-from data.skyscapes_dataset import SkyScapesDataset, NUM_CLASSES_DENSE
-from data.transforms import (
+from skyscapesnet.models.fc_densenet import FCDenseNet
+from skyscapesnet.models.skyscapesnet import SkyScapesNet
+from skyscapesnet.data.skyscapes_dataset import SkyScapesDataset, NUM_CLASSES_DENSE
+from skyscapesnet.data.transforms import (
     JointCompose, JointRandomHorizontalFlip,
     JointRandomVerticalFlip, JointColorJitter,
 )
-from losses.loss import MultiTaskLoss, WeightedCrossEntropyLoss, SoftIoULoss
-from utils.metrics import ConfusionMatrix
+from skyscapesnet.losses.loss import MultiTaskLoss, WeightedCrossEntropyLoss, SoftIoULoss
+from skyscapesnet.utils.metrics import ConfusionMatrix
 
 
 class SyntheticDataset(Dataset):
