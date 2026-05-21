@@ -254,3 +254,39 @@ def compute_class_weights(dataset, n_classes, method="inverse_freq"):
         raise ValueError(f"Unknown method: {method}")
 
     return weights.float()
+
+
+class SegLoss(nn.Module):
+    """Single-head segmentation loss: CE + Soft-IoU.
+
+    Used for Lane-13 / Category-11 benchmarks that have no edge heads.
+
+    Args:
+        n_classes: Number of segmentation classes.
+        class_weights: Optional per-class weights (tensor or list).
+        ignore_index: Class index to ignore (default: 255).
+    """
+
+    def __init__(self, n_classes, class_weights=None, ignore_index=255):
+        super().__init__()
+        if class_weights is not None:
+            class_weights = torch.as_tensor(class_weights, dtype=torch.float32)
+        self.ce_loss = WeightedCrossEntropyLoss(class_weights, ignore_index)
+        self.iou_loss = SoftIoULoss(n_classes, ignore_index)
+        # Mirror MultiTaskLoss API: expose class_weights buffer
+        self.register_buffer(
+            "class_weights",
+            torch.ones(n_classes) if class_weights is None else class_weights,
+        )
+
+    def forward(self, output, target, edge_targets=None):
+        """
+        Args:
+            output: SkyScapesOutput (only .seg is consulted).
+            target: (N, H, W) integer class labels.
+            edge_targets: ignored; accepted for interface symmetry.
+        """
+        seg_ce = self.ce_loss(output.seg, target)
+        seg_iou = self.iou_loss(output.seg, target)
+        loss = seg_ce + seg_iou
+        return loss, {"seg_ce": seg_ce.item(), "seg_iou": seg_iou.item()}

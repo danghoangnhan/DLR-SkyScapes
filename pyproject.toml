@@ -13,6 +13,7 @@ dependencies = [
     "huggingface-hub",
     "safetensors",
     "albumentations>=1.0",
+    "torchmetrics>=1.3",
 ]
 
 [dependency-groups]
