@@ -9,7 +9,26 @@ from torchgeo.datasets import NonGeoDataset
 from skyscapesnet.data.class_maps import (
     DENSE_20_MAP, LANE_13_MAP, CATEGORY_11_MAP,
 )
-from skyscapesnet.data.skyscapes_dataset import rgb_mask_to_class_ids
+
+
+def rgb_mask_to_class_ids(mask_rgb, color_to_id):
+    """Convert an RGB label mask to a class-index mask.
+
+    Args:
+        mask_rgb: numpy array (H, W, 3) with RGB values.
+        color_to_id: dict mapping (R, G, B) -> class_id.
+
+    Returns:
+        numpy array (H, W) with integer class indices.
+    """
+    h, w = mask_rgb.shape[:2]
+    class_mask = np.zeros((h, w), dtype=np.int64)
+
+    for color, class_id in color_to_id.items():
+        match = np.all(mask_rgb == np.array(color, dtype=np.uint8), axis=-1)
+        class_mask[match] = class_id
+
+    return class_mask
 
 
 class SkyScapesDataset(NonGeoDataset):

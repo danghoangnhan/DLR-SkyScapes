@@ -9,7 +9,7 @@ from skyscapesnet.models.fc_densenet import FCDenseNet
 from skyscapesnet.models.craspp import CRASPP
 from skyscapesnet.models.skyscapesnet import SkyScapesNet
 from skyscapesnet.losses.loss import MultiTaskLoss
-from skyscapesnet.utils.metrics import ConfusionMatrix
+from skyscapesnet.metrics.seg import SemSegMetrics
 
 
 def test_fc_densenet103():
@@ -68,13 +68,16 @@ def test_losses():
 
 
 def test_metrics():
-    cm = ConfusionMatrix(5)
+    metrics = SemSegMetrics(n_classes=5)
     pred = torch.tensor([0, 1, 2, 3, 4, 0, 1])
     target = torch.tensor([0, 1, 2, 3, 4, 1, 0])
-    cm.update(pred, target)
-    miou = cm.mean_iou()
-    acc = cm.pixel_accuracy()
-    print(f"[PASS] ConfusionMatrix | mIoU: {miou:.4f} | Acc: {acc:.4f}")
+    metrics.update(pred, target)
+    out = metrics.compute()
+    miou = out["miou"].item()
+    acc = out["pixel_acc"].item()
+    assert 0.0 <= miou <= 1.0
+    assert 0.0 <= acc <= 1.0
+    print(f"[PASS] SemSegMetrics | mIoU: {miou:.4f} | Acc: {acc:.4f}")
 
 
 def test_skyscapesnet_without_edge_heads():

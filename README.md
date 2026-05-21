@@ -30,24 +30,32 @@ Paper result: **40.13 mIoU** on SkyScapes-Dense (vs 37.78 FC-DenseNet-103 baseli
 ```bash
 # Install
 uv sync
+uv pip install -e .
 
-# Smoke test (synthetic data, 3 epochs)
-python train.py --smoke_test --model skyscapesnet
+# Run tests
+pytest tests/ -v
 
 # Train on real data
-python train.py --data_root /path/to/skyscapes --model skyscapesnet
+skyscapesnet fit --config configs/base.yaml --config configs/dense.yaml \
+    --data.root /path/to/skyscapes
 
-# Evaluate
-python evaluate.py --data_root /path/to/skyscapes --checkpoint checkpoints/best.pth
+# Train Lane-13 with GroupNorm
+skyscapesnet fit --config configs/base.yaml --config configs/lane.yaml \
+    --model.model.init_args.norm_layer=group
 
-# Run model tests
-python test_models.py
+# Full-resolution sliding-window prediction
+skyscapesnet predict --config configs/base.yaml --config configs/dense.yaml \
+    --ckpt_path checkpoints/best.ckpt
+
+# Compute and cache class weights (run once per task before training)
+python scripts/compute_class_weights.py \
+    --data_root /path/to/skyscapes --task dense --output cache/class_weights_dense.json
 ```
 
 ## HuggingFace Hub
 
 ```python
-from models import SkyScapesNet
+from skyscapesnet import SkyScapesNet
 
 # Save locally
 model = SkyScapesNet(n_classes=20)
@@ -65,26 +73,18 @@ model.push_to_hub("username/skyscapesnet-dense")
 
 ```
 SkyScapesNet-Dense/
-├── models/
-│   ├── layers.py           # SeparableConv2d, FDB, DoS, UpS + Tiramisu blocks
-│   ├── fc_densenet.py      # FC-DenseNet-103 baseline
-│   ├── skyscapesnet.py     # Full SkyScapesNet (multi-task, 148M params)
-│   ├── craspp.py           # Concatenated Reverse ASPP
-│   ├── frsr.py             # Full-Resolution Separable Residual
-│   ├── lkbr.py             # Large-Kernel Boundary Refinement
-│   └── hub.py              # HuggingFace Hub mixin
-├── data/
-│   ├── skyscapes_dataset.py # Dataset loader (31→20 class mapping)
-│   └── transforms.py       # Joint image+mask augmentations
-├── losses/
-│   └── loss.py             # CE + Soft-IoU + Soft-Dice, multi-task loss
-├── utils/
-│   ├── metrics.py          # ConfusionMatrix, mIoU, pixel accuracy
-│   └── augment.py          # Albumentations pipeline
-├── train.py                # Training (LR=1e-4, batch=1, 60 epochs, 512x512)
-├── evaluate.py             # Per-class IoU evaluation
-├── test_models.py          # Model verification (7 tests)
-└── pyproject.toml          # Dependencies (uv)
+├── src/skyscapesnet/
+│   ├── models/         # FC-DenseNet, SkyScapesNet, CRASPP, FRSR, LKBR, layers
+│   ├── data/           # TorchGeo dataset + DataModule, class LUTs, sliding-window
+│   ├── losses/         # SegLoss + MultiTaskLoss (CE + Soft-IoU + Soft-Dice)
+│   ├── metrics/        # torchmetrics-backed SemSegMetrics + EdgeF1
+│   ├── callbacks/      # ScheduledClassWeights + StitchingCallback
+│   └── cli.py          # LightningCLI entry point (`skyscapesnet`)
+├── configs/            # YAML configs: base.yaml + dense/lane/category/edge_*.yaml
+├── scripts/
+│   └── compute_class_weights.py  # One-shot script to cache per-task weights
+├── tests/              # pytest suite
+└── pyproject.toml      # Dependencies (uv) + `skyscapesnet` console_scripts entry
 ```
 
 ## Training Settings (from paper)
