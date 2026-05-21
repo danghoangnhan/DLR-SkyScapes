@@ -77,6 +77,17 @@ def test_metrics():
     print(f"[PASS] ConfusionMatrix | mIoU: {miou:.4f} | Acc: {acc:.4f}")
 
 
+def test_skyscapesnet_without_edge_heads():
+    model = SkyScapesNet(in_channels=3, n_classes=13, growth_rate=16, use_edge_heads=False)
+    model.eval()
+    x = torch.randn(1, 3, 64, 64)
+    with torch.no_grad():
+        out = model(x)
+    assert out.seg.shape == (1, 13, 64, 64)
+    assert out.multi_edge is None
+    assert out.binary_edge is None
+
+
 def test_hub_roundtrip():
     # Create model and get a reference output
     model = SkyScapesNet(in_channels=3, n_classes=20, growth_rate=16)  # small for speed

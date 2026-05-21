@@ -106,7 +106,7 @@ class WeightedCrossEntropyLoss(nn.Module):
         if class_weights is not None:
             self.register_buffer("class_weights", class_weights)
         else:
-            self.class_weights = None
+            self.register_buffer("class_weights", None)
 
     def forward(self, logits, targets):
         return F.cross_entropy(
@@ -159,11 +159,18 @@ class MultiTaskLoss(nn.Module):
     def __init__(self, n_classes, class_weights=None, lambda_multi=1.0,
                  lambda_binary=1.0, ignore_index=255):
         super().__init__()
+        if class_weights is not None:
+            class_weights = torch.as_tensor(class_weights, dtype=torch.float32)
         self.ce_loss = WeightedCrossEntropyLoss(class_weights, ignore_index)
         self.iou_loss = SoftIoULoss(n_classes, ignore_index)
         self.lambda_multi = lambda_multi
         self.lambda_binary = lambda_binary
         self.ignore_index = ignore_index
+        # Mirror SegLoss API: expose class_weights buffer (used by ScheduledClassWeightsCallback)
+        self.register_buffer(
+            "class_weights",
+            torch.ones(n_classes) if class_weights is None else class_weights,
+        )
 
     def forward(self, output, seg_targets, edge_targets=None):
         """

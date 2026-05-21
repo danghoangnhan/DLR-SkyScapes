@@ -117,6 +117,7 @@ class SkyScapesNet(nn.Module, PyTorchModelHubMixin):
         norm_layer="batch",
         gn_groups=32,
         use_checkpointing=False,
+        use_edge_heads=True,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -127,6 +128,7 @@ class SkyScapesNet(nn.Module, PyTorchModelHubMixin):
         self.norm_layer = norm_layer
         self.gn_groups = gn_groups
         self.use_checkpointing = use_checkpointing
+        self.use_edge_heads = use_edge_heads
 
         # FC-DenseNet-103 configuration
         n_layers_encoder = [4, 5, 7, 10, 12]
@@ -234,21 +236,23 @@ class SkyScapesNet(nn.Module, PyTorchModelHubMixin):
             use_checkpointing=use_checkpointing,
         )
 
-        # Branch 2: Multi-class edge detection
-        self.multi_edge_branch = DecoderBranch(
-            branch_n_layers, branch_skip_channels, growth_rate,
-            branch_input_ch, n_classes, dropout_p,
-            norm_layer=norm_layer, gn_groups=gn_groups,
-            use_checkpointing=use_checkpointing,
-        )
+        # Branch 2 & 3: Edge heads (optional, controlled by use_edge_heads)
+        if use_edge_heads:
+            # Branch 2: Multi-class edge detection
+            self.multi_edge_branch = DecoderBranch(
+                branch_n_layers, branch_skip_channels, growth_rate,
+                branch_input_ch, n_classes, dropout_p,
+                norm_layer=norm_layer, gn_groups=gn_groups,
+                use_checkpointing=use_checkpointing,
+            )
 
-        # Branch 3: Binary edge detection
-        self.binary_edge_branch = DecoderBranch(
-            branch_n_layers, branch_skip_channels, growth_rate,
-            branch_input_ch, 1, dropout_p,
-            norm_layer=norm_layer, gn_groups=gn_groups,
-            use_checkpointing=use_checkpointing,
-        )
+            # Branch 3: Binary edge detection
+            self.binary_edge_branch = DecoderBranch(
+                branch_n_layers, branch_skip_channels, growth_rate,
+                branch_input_ch, 1, dropout_p,
+                norm_layer=norm_layer, gn_groups=gn_groups,
+                use_checkpointing=use_checkpointing,
+            )
 
     def forward(self, x):
         # --- Initial Conv ---
@@ -283,7 +287,8 @@ class SkyScapesNet(nn.Module, PyTorchModelHubMixin):
         from .outputs import SkyScapesOutput
 
         seg = self.seg_branch(out, branch_skips)
-        multi_edge = self.multi_edge_branch(out, branch_skips)
-        binary_edge = self.binary_edge_branch(out, branch_skips)
-
-        return SkyScapesOutput(seg=seg, multi_edge=multi_edge, binary_edge=binary_edge)
+        if self.use_edge_heads:
+            multi_edge = self.multi_edge_branch(out, branch_skips)
+            binary_edge = self.binary_edge_branch(out, branch_skips)
+            return SkyScapesOutput(seg=seg, multi_edge=multi_edge, binary_edge=binary_edge)
+        return SkyScapesOutput(seg=seg)

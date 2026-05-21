@@ -15,7 +15,17 @@ dependencies = [
     "torchgeo>=0.6",
     "torchmetrics>=1.3",
     "kornia>=0.7",
+    "lightning>=2.2",
+    "jsonargparse[signatures]>=4.27",
+    "pyyaml",
+    "tensorboard",
 ]
+
+[project.optional-dependencies]
+wandb = ["wandb>=0.16"]
+
+[project.scripts]
+skyscapesnet = "skyscapesnet.cli:main"
 
 [dependency-groups]
 dev = [
