@@ -1,16 +1,17 @@
-"""Verification script: tests forward pass for all models.
-
-Run: python test_models.py
-"""
-
+"""Verification: forward pass for all models."""
 import tempfile
 
+import pytest
 import torch
+
+from skyscapesnet.models.fc_densenet import FCDenseNet
+from skyscapesnet.models.craspp import CRASPP
+from skyscapesnet.models.skyscapesnet import SkyScapesNet
+from skyscapesnet.losses.loss import MultiTaskLoss
+from skyscapesnet.utils.metrics import ConfusionMatrix
 
 
 def test_fc_densenet103():
-    from models.fc_densenet import FCDenseNet
-
     model = FCDenseNet(in_channels=3, n_classes=20)
     x = torch.randn(1, 3, 256, 256)
     out = model(x)
@@ -20,8 +21,6 @@ def test_fc_densenet103():
 
 
 def test_fc_densenet_backbone():
-    from models.fc_densenet import FCDenseNet
-
     model = FCDenseNet(in_channels=3, n_classes=None)
     x = torch.randn(1, 3, 256, 256)
     out = model(x)
@@ -30,8 +29,6 @@ def test_fc_densenet_backbone():
 
 
 def test_craspp():
-    from models.craspp import CRASPP
-
     model = CRASPP(in_channels=656, out_channels=240)
     model.eval()  # avoid BN issue with 1x1 spatial
     x = torch.randn(2, 656, 8, 8)
@@ -41,8 +38,6 @@ def test_craspp():
 
 
 def test_skyscapesnet():
-    from models.skyscapesnet import SkyScapesNet
-
     model = SkyScapesNet(in_channels=3, n_classes=20)
     model.eval()
     x = torch.randn(1, 3, 256, 256)
@@ -57,8 +52,6 @@ def test_skyscapesnet():
 
 
 def test_losses():
-    from losses.loss import MultiTaskLoss
-
     criterion = MultiTaskLoss(n_classes=20)
     seg_pred = torch.randn(2, 20, 64, 64, requires_grad=True)
     multi_edge_pred = torch.randn(2, 20, 64, 64, requires_grad=True)
@@ -73,8 +66,6 @@ def test_losses():
 
 
 def test_metrics():
-    from utils.metrics import ConfusionMatrix
-
     cm = ConfusionMatrix(5)
     pred = torch.tensor([0, 1, 2, 3, 4, 0, 1])
     target = torch.tensor([0, 1, 2, 3, 4, 1, 0])
@@ -85,8 +76,6 @@ def test_metrics():
 
 
 def test_hub_roundtrip():
-    from models.skyscapesnet import SkyScapesNet
-
     # Create model and get a reference output
     model = SkyScapesNet(in_channels=3, n_classes=20, growth_rate=16)  # small for speed
     model.eval()
@@ -104,32 +93,3 @@ def test_hub_roundtrip():
 
     assert torch.allclose(orig_seg, loaded_seg, atol=1e-6), "Weights not preserved!"
     print(f"[PASS] PyTorchModelHubMixin save/load round-trip | Outputs match")
-
-
-if __name__ == "__main__":
-    print("=" * 60)
-    print("SkyScapesNet Model Verification")
-    print("=" * 60)
-
-    tests = [
-        ("FC-DenseNet103", test_fc_densenet103),
-        ("FC-DenseNet103 backbone", test_fc_densenet_backbone),
-        ("CRASPP", test_craspp),
-        ("SkyScapesNet", test_skyscapesnet),
-        ("Losses", test_losses),
-        ("Metrics", test_metrics),
-        ("Hub round-trip", test_hub_roundtrip),
-    ]
-
-    passed = 0
-    failed = 0
-    for name, test_fn in tests:
-        try:
-            test_fn()
-            passed += 1
-        except Exception as e:
-            print(f"[FAIL] {name}: {e}")
-            failed += 1
-
-    print("=" * 60)
-    print(f"Results: {passed} passed, {failed} failed")
