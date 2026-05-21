@@ -7,3 +7,7 @@ checkpoints/
 dist/
 *.egg-info/
 uv.lock
+
+# GitHub Wiki working copy — wiki content lives in <repo>.wiki.git,
+# clone it locally with: git clone git@github.com:<owner>/<repo>.wiki.git wiki
+wiki/
