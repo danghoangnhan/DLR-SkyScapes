@@ -1,0 +1,19 @@
+seed_everything: 42
+data:
+  task: lane
+model:
+  task: lane
+  class_weights_path: cache/class_weights_lane.json
+  model:
+    class_path: skyscapesnet.models.baselines.DenseASPP
+    init_args:
+      n_classes: 13
+      output_stride: 16
+      inter_channels: 512
+      out_channels: 128
+      atrous_rates: [3, 6, 12, 18, 24]
+      dropout_p: 0.1
+  loss:
+    class_path: skyscapesnet.losses.loss.SegLoss
+    init_args:
+      n_classes: 13

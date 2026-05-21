@@ -1,0 +1,16 @@
+seed_everything: 42
+data:
+  task: lane
+model:
+  task: lane
+  class_weights_path: cache/class_weights_lane.json
+  model:
+    class_path: skyscapesnet.models.baselines.PSPNet
+    init_args:
+      n_classes: 13
+      output_stride: 8
+      dropout_p: 0.1
+  loss:
+    class_path: skyscapesnet.losses.loss.SegLoss
+    init_args:
+      n_classes: 13

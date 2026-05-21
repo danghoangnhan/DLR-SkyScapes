@@ -1,0 +1,16 @@
+seed_everything: 42
+data:
+  task: dense
+model:
+  task: dense
+  class_weights_path: cache/class_weights_dense.json
+  model:
+    class_path: skyscapesnet.models.baselines.MobileUNet
+    init_args:
+      n_classes: 20
+      decoder_channels: [96, 64, 32, 16]
+      bilinear: true
+  loss:
+    class_path: skyscapesnet.losses.loss.SegLoss
+    init_args:
+      n_classes: 20

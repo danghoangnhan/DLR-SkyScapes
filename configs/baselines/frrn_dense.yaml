@@ -1,0 +1,18 @@
+seed_everything: 42
+# FRRN-A: paper Table 2 (SkyScapes-Dense) uses the lighter "FRRN" variant.
+data:
+  task: dense
+model:
+  task: dense
+  class_weights_path: cache/class_weights_dense.json
+  model:
+    class_path: skyscapesnet.models.baselines.FRRN
+    init_args:
+      n_classes: 20
+      n_units_per_scale: 2
+      n_stem_units: 3
+      n_tail_units: 3
+  loss:
+    class_path: skyscapesnet.losses.loss.SegLoss
+    init_args:
+      n_classes: 20
