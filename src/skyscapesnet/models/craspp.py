@@ -16,6 +16,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .layers import make_norm
+
 
 class CRASPP(nn.Module):
     """Concatenated Reverse ASPP — cascading sequential design.
@@ -37,14 +39,15 @@ class CRASPP(nn.Module):
         dropout_p: Dropout probability.
     """
 
-    def __init__(self, in_channels, out_channels=240, mid_channels=256, dropout_p=0.2):
+    def __init__(self, in_channels, out_channels=240, mid_channels=256, dropout_p=0.2,
+                 norm_layer="batch", gn_groups=32):
         super().__init__()
         self.out_channels = out_channels
 
         # --- Forward path: ImagePooling → Atrous18 → Atrous12 → Atrous6 → Conv1x1 ---
 
         # Image-level pooling (global context)
-        # No BN after pool — spatial dims are 1x1 which breaks BN with batch_size=1
+        # No BN/GN after pool — spatial dims are 1x1 which breaks normalization
         self.image_pool = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Conv2d(in_channels, mid_channels, kernel_size=1, bias=True),
@@ -53,15 +56,24 @@ class CRASPP(nn.Module):
 
         # Forward cascading atrous convolutions
         # After image_pool cat with input: in_channels + mid_channels
-        self.fwd_atrous18 = self._make_atrous(in_channels + mid_channels, mid_channels, dilation=18)
+        self.fwd_atrous18 = self._make_atrous(
+            in_channels + mid_channels, mid_channels, dilation=18,
+            norm_layer=norm_layer, gn_groups=gn_groups,
+        )
         # After cat: in_channels + mid_channels + mid_channels
-        self.fwd_atrous12 = self._make_atrous(in_channels + 2 * mid_channels, mid_channels, dilation=12)
+        self.fwd_atrous12 = self._make_atrous(
+            in_channels + 2 * mid_channels, mid_channels, dilation=12,
+            norm_layer=norm_layer, gn_groups=gn_groups,
+        )
         # After cat: in_channels + 3 * mid_channels
-        self.fwd_atrous6 = self._make_atrous(in_channels + 3 * mid_channels, mid_channels, dilation=6)
+        self.fwd_atrous6 = self._make_atrous(
+            in_channels + 3 * mid_channels, mid_channels, dilation=6,
+            norm_layer=norm_layer, gn_groups=gn_groups,
+        )
         # After cat: in_channels + 4 * mid_channels
         self.fwd_conv1x1 = nn.Sequential(
             nn.Conv2d(in_channels + 4 * mid_channels, mid_channels, kernel_size=1, bias=False),
-            nn.BatchNorm2d(mid_channels),
+            make_norm(mid_channels, norm_layer, gn_groups),
             nn.ReLU(inplace=True),
         )
 
@@ -69,32 +81,42 @@ class CRASPP(nn.Module):
 
         self.rev_conv1x1 = nn.Sequential(
             nn.Conv2d(in_channels, mid_channels, kernel_size=1, bias=False),
-            nn.BatchNorm2d(mid_channels),
+            make_norm(mid_channels, norm_layer, gn_groups),
             nn.ReLU(inplace=True),
         )
         # After cat: in_channels + mid_channels
-        self.rev_atrous6 = self._make_atrous(in_channels + mid_channels, mid_channels, dilation=6)
+        self.rev_atrous6 = self._make_atrous(
+            in_channels + mid_channels, mid_channels, dilation=6,
+            norm_layer=norm_layer, gn_groups=gn_groups,
+        )
         # After cat: in_channels + 2 * mid_channels
-        self.rev_atrous12 = self._make_atrous(in_channels + 2 * mid_channels, mid_channels, dilation=12)
+        self.rev_atrous12 = self._make_atrous(
+            in_channels + 2 * mid_channels, mid_channels, dilation=12,
+            norm_layer=norm_layer, gn_groups=gn_groups,
+        )
         # After cat: in_channels + 3 * mid_channels
-        self.rev_atrous18 = self._make_atrous(in_channels + 3 * mid_channels, mid_channels, dilation=18)
+        self.rev_atrous18 = self._make_atrous(
+            in_channels + 3 * mid_channels, mid_channels, dilation=18,
+            norm_layer=norm_layer, gn_groups=gn_groups,
+        )
 
         # Final projection: forward (5*mid) + reverse (4*mid) → out_channels
         # Forward produces: mid (pool) + mid (a18) + mid (a12) + mid (a6) + mid (1x1) = 5*mid
         # Reverse produces: mid (1x1) + mid (a6) + mid (a12) + mid (a18) = 4*mid
         self.final_project = nn.Sequential(
             nn.Conv2d(9 * mid_channels, out_channels, kernel_size=1, bias=False),
-            nn.BatchNorm2d(out_channels),
+            make_norm(out_channels, norm_layer, gn_groups),
             nn.ReLU(inplace=True),
             nn.Dropout2d(p=dropout_p),
         )
 
     @staticmethod
-    def _make_atrous(in_channels, out_channels, dilation):
+    def _make_atrous(in_channels, out_channels, dilation,
+                     norm_layer="batch", gn_groups=32):
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3,
                       padding=dilation, dilation=dilation, bias=False),
-            nn.BatchNorm2d(out_channels),
+            make_norm(out_channels, norm_layer, gn_groups),
             nn.ReLU(inplace=True),
         )
 

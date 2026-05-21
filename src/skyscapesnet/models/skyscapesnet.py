@@ -42,7 +42,8 @@ class DecoderBranch(nn.Module):
     """
 
     def __init__(self, n_layers_per_block, skip_channels, growth_rate,
-                 input_channels, n_classes, dropout_p=0.2):
+                 input_channels, n_classes, dropout_p=0.2,
+                 norm_layer="batch", gn_groups=32, use_checkpointing=False):
         super().__init__()
         assert len(n_layers_per_block) == 3
         assert len(skip_channels) == 3
@@ -56,11 +57,15 @@ class DecoderBranch(nn.Module):
         for i, n_layers in enumerate(n_layers_per_block):
             skip_ch = skip_channels[i]
             self.ups.append(UpsamplingBlock(upsample_channels, upsample_channels))
-            self.lkbrs.append(LKBR(skip_ch))
+            self.lkbrs.append(LKBR(skip_ch, norm_layer=norm_layer, gn_groups=gn_groups))
             # After UpS concat with LKBR-processed skip (LKBR doubles channels via cat)
             concat_ch = upsample_channels + skip_ch * 2  # LKBR cats original + refined
             self.fdbs.append(
-                FullyDenseBlock(n_layers, concat_ch, growth_rate, dropout_p)
+                FullyDenseBlock(
+                    n_layers, concat_ch, growth_rate, dropout_p,
+                    norm_layer=norm_layer, gn_groups=gn_groups,
+                    use_checkpointing=use_checkpointing,
+                )
             )
             upsample_channels = n_layers * growth_rate
 
@@ -109,6 +114,9 @@ class SkyScapesNet(nn.Module, PyTorchModelHubMixin):
         n_init_features=48,
         dropout_p=0.2,
         craspp_mid_channels=256,
+        norm_layer="batch",
+        gn_groups=32,
+        use_checkpointing=False,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -116,6 +124,9 @@ class SkyScapesNet(nn.Module, PyTorchModelHubMixin):
         self.n_init_features = n_init_features
         self.dropout_p = dropout_p
         self.craspp_mid_channels = craspp_mid_channels
+        self.norm_layer = norm_layer
+        self.gn_groups = gn_groups
+        self.use_checkpointing = use_checkpointing
 
         # FC-DenseNet-103 configuration
         n_layers_encoder = [4, 5, 7, 10, 12]
@@ -138,19 +149,27 @@ class SkyScapesNet(nn.Module, PyTorchModelHubMixin):
         skip_channels_list = []  # track channels at each skip point
 
         for n_layers in n_layers_encoder:
-            fdb = FullyDenseBlock(n_layers, current_channels, growth_rate, dropout_p)
+            fdb = FullyDenseBlock(
+                n_layers, current_channels, growth_rate, dropout_p,
+                norm_layer=norm_layer, gn_groups=gn_groups,
+                use_checkpointing=use_checkpointing,
+            )
             current_channels = current_channels + n_layers * growth_rate
             self.encoder_fdbs.append(fdb)
 
-            frsr = FRSR(current_channels)
+            frsr = FRSR(current_channels, norm_layer=norm_layer, gn_groups=gn_groups)
             self.encoder_frsrs.append(frsr)
 
             skip_channels_list.append(current_channels)
-            self.encoder_dos.append(DownsamplingBlock(current_channels))
+            self.encoder_dos.append(DownsamplingBlock(
+                current_channels, norm_layer=norm_layer, gn_groups=gn_groups,
+            ))
 
         # --- Bottleneck: FDB + CRASPP ---
         self.bottleneck_fdb = FullyDenseBlock(
             n_layers_bottleneck, current_channels, growth_rate, dropout_p,
+            norm_layer=norm_layer, gn_groups=gn_groups,
+            use_checkpointing=use_checkpointing,
         )
         bottleneck_all_ch = current_channels + n_layers_bottleneck * growth_rate
         bottleneck_new_ch = n_layers_bottleneck * growth_rate  # 240
@@ -160,6 +179,8 @@ class SkyScapesNet(nn.Module, PyTorchModelHubMixin):
             out_channels=bottleneck_new_ch,
             mid_channels=craspp_mid_channels,
             dropout_p=dropout_p,
+            norm_layer=norm_layer,
+            gn_groups=gn_groups,
         )
 
         # --- Shared Decoder (first 2 upsampling steps, before branching) ---
@@ -176,12 +197,18 @@ class SkyScapesNet(nn.Module, PyTorchModelHubMixin):
             self.shared_ups.append(
                 UpsamplingBlock(upsample_channels, upsample_channels)
             )
-            self.shared_lkbrs.append(LKBR(skip_ch))
+            self.shared_lkbrs.append(
+                LKBR(skip_ch, norm_layer=norm_layer, gn_groups=gn_groups)
+            )
             # LKBR doubles skip channels via cat (original + refined)
             concat_ch = upsample_channels + skip_ch * 2
             n_layers = n_layers_decoder[i]
             self.shared_fdbs.append(
-                FullyDenseBlock(n_layers, concat_ch, growth_rate, dropout_p)
+                FullyDenseBlock(
+                    n_layers, concat_ch, growth_rate, dropout_p,
+                    norm_layer=norm_layer, gn_groups=gn_groups,
+                    use_checkpointing=use_checkpointing,
+                )
             )
             upsample_channels = n_layers * growth_rate
 
@@ -203,18 +230,24 @@ class SkyScapesNet(nn.Module, PyTorchModelHubMixin):
         self.seg_branch = DecoderBranch(
             branch_n_layers, branch_skip_channels, growth_rate,
             branch_input_ch, n_classes, dropout_p,
+            norm_layer=norm_layer, gn_groups=gn_groups,
+            use_checkpointing=use_checkpointing,
         )
 
         # Branch 2: Multi-class edge detection
         self.multi_edge_branch = DecoderBranch(
             branch_n_layers, branch_skip_channels, growth_rate,
             branch_input_ch, n_classes, dropout_p,
+            norm_layer=norm_layer, gn_groups=gn_groups,
+            use_checkpointing=use_checkpointing,
         )
 
         # Branch 3: Binary edge detection
         self.binary_edge_branch = DecoderBranch(
             branch_n_layers, branch_skip_channels, growth_rate,
             branch_input_ch, 1, dropout_p,
+            norm_layer=norm_layer, gn_groups=gn_groups,
+            use_checkpointing=use_checkpointing,
         )
 
     def forward(self, x):
