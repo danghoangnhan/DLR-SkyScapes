@@ -98,8 +98,8 @@ def train_one_epoch(model, loader, criterion, optimizer, scaler, device,
 
         with autocast("cuda", enabled=use_amp):
             if is_multitask:
-                seg, multi_edge, binary_edge = model(images)
-                loss, _ = criterion(seg, multi_edge, binary_edge, masks)
+                out = model(images)
+                loss, _ = criterion(out, masks)
             else:
                 logits = model(images)
                 loss = criterion(logits, masks)
@@ -130,9 +130,9 @@ def validate(model, loader, criterion, device, n_classes, is_multitask):
         masks = masks.to(device)
 
         if is_multitask:
-            seg, multi_edge, binary_edge = model(images)
-            loss, _ = criterion(seg, multi_edge, binary_edge, masks)
-            preds = seg.argmax(dim=1)
+            out = model(images)
+            loss, _ = criterion(out, masks)
+            preds = out.seg.argmax(dim=1)
         else:
             logits = model(images)
             loss = criterion(logits, masks)

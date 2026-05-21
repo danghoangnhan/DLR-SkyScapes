@@ -43,7 +43,8 @@ def test_skyscapesnet():
     model.eval()
     x = torch.randn(1, 3, 256, 256)
     with torch.no_grad():
-        seg, multi_edge, binary_edge = model(x)
+        out = model(x)
+    seg, multi_edge, binary_edge = out.seg, out.multi_edge, out.binary_edge
     n_params = sum(p.numel() for p in model.parameters())
     assert seg.shape == (1, 20, 256, 256), f"seg: {seg.shape}"
     assert multi_edge.shape == (1, 20, 256, 256), f"multi_edge: {multi_edge.shape}"
@@ -53,15 +54,15 @@ def test_skyscapesnet():
 
 
 def test_losses():
+    from skyscapesnet.models.outputs import SkyScapesOutput
     criterion = MultiTaskLoss(n_classes=20)
     seg_pred = torch.randn(2, 20, 64, 64, requires_grad=True)
     multi_edge_pred = torch.randn(2, 20, 64, 64, requires_grad=True)
     binary_edge_pred = torch.randn(2, 1, 64, 64, requires_grad=True)
+    out = SkyScapesOutput(seg=seg_pred, multi_edge=multi_edge_pred, binary_edge=binary_edge_pred)
     seg_target = torch.randint(0, 20, (2, 64, 64))
 
-    loss, loss_dict = criterion(
-        seg_pred, multi_edge_pred, binary_edge_pred, seg_target,
-    )
+    loss, loss_dict = criterion(out, seg_target)
     assert loss.requires_grad, "Loss should require grad for backprop"
     print(f"[PASS] MultiTaskLoss | Total: {loss.item():.4f} | Components: {loss_dict}")
 
@@ -82,7 +83,7 @@ def test_hub_roundtrip():
     model.eval()
     x = torch.randn(1, 3, 64, 64)
     with torch.no_grad():
-        orig_seg, _, _ = model(x)
+        orig_seg = model(x).seg
 
     # Save and reload
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -90,7 +91,7 @@ def test_hub_roundtrip():
         loaded = SkyScapesNet.from_pretrained(tmp_dir)
         loaded.eval()
         with torch.no_grad():
-            loaded_seg, _, _ = loaded(x)
+            loaded_seg = loaded(x).seg
 
     assert torch.allclose(orig_seg, loaded_seg, atol=1e-6), "Weights not preserved!"
     print(f"[PASS] PyTorchModelHubMixin save/load round-trip | Outputs match")

@@ -165,17 +165,19 @@ class MultiTaskLoss(nn.Module):
         self.lambda_binary = lambda_binary
         self.ignore_index = ignore_index
 
-    def forward(self, seg_logits, multi_edge_logits, binary_edge_logits,
-                seg_targets, edge_targets=None):
+    def forward(self, output, seg_targets, edge_targets=None):
         """
         Args:
-            seg_logits: (N, C, H, W) segmentation logits.
-            multi_edge_logits: (N, C, H, W) multi-class edge logits.
-            binary_edge_logits: (N, 1, H, W) binary edge logits.
+            output: SkyScapesOutput with seg + multi_edge + binary_edge populated.
             seg_targets: (N, H, W) integer class labels.
             edge_targets: (N, H, W) integer edge labels (optional).
-                If None, edge labels are derived from seg_targets boundaries.
         """
+        seg_logits = output.seg
+        multi_edge_logits = output.multi_edge
+        binary_edge_logits = output.binary_edge
+        assert multi_edge_logits is not None and binary_edge_logits is not None, (
+            "MultiTaskLoss requires both edge heads — use SegLoss for single-task benchmarks"
+        )
         # Segmentation loss: CE + Soft-IoU
         seg_ce = self.ce_loss(seg_logits, seg_targets)
         seg_iou = self.iou_loss(seg_logits, seg_targets)

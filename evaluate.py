@@ -62,11 +62,9 @@ def main():
             images = images.to(device)
 
             if is_multitask:
-                seg, _, _ = model(images)
-                preds = seg.argmax(dim=1)
+                preds = model(images).seg.argmax(dim=1)
             else:
-                logits = model(images)
-                preds = logits.argmax(dim=1)
+                preds = model(images).argmax(dim=1)
 
             cm.update(preds, masks)
 

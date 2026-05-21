@@ -247,8 +247,10 @@ class SkyScapesNet(nn.Module, PyTorchModelHubMixin):
         # Remaining skips: skip3, skip2, skip1
         branch_skips = [skips[2], skips[1], skips[0]]
 
+        from .outputs import SkyScapesOutput
+
         seg = self.seg_branch(out, branch_skips)
         multi_edge = self.multi_edge_branch(out, branch_skips)
         binary_edge = self.binary_edge_branch(out, branch_skips)
 
-        return seg, multi_edge, binary_edge
+        return SkyScapesOutput(seg=seg, multi_edge=multi_edge, binary_edge=binary_edge)
