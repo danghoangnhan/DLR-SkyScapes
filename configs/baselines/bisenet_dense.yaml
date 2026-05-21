@@ -1,0 +1,17 @@
+seed_everything: 42
+data:
+  task: dense
+model:
+  task: dense
+  class_weights_path: cache/class_weights_dense.json
+  model:
+    class_path: skyscapesnet.models.baselines.BiSeNet
+    init_args:
+      n_classes: 20
+      sp_channels: 256
+      cp_channels: 128
+      ffm_channels: 256
+  loss:
+    class_path: skyscapesnet.losses.loss.SegLoss
+    init_args:
+      n_classes: 20

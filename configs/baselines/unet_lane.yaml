@@ -1,0 +1,16 @@
+seed_everything: 42
+data:
+  task: lane
+model:
+  task: lane
+  class_weights_path: cache/class_weights_lane.json
+  model:
+    class_path: skyscapesnet.models.baselines.UNet
+    init_args:
+      n_classes: 13
+      base_channels: 64
+      bilinear: true
+  loss:
+    class_path: skyscapesnet.losses.loss.SegLoss
+    init_args:
+      n_classes: 13

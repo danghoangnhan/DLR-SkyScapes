@@ -1,0 +1,17 @@
+seed_everything: 42
+data:
+  task: dense
+model:
+  task: dense
+  class_weights_path: cache/class_weights_dense.json
+  model:
+    class_path: skyscapesnet.models.baselines.DeepLabV3Plus
+    init_args:
+      n_classes: 20
+      output_stride: 16
+      aspp_channels: 256
+      low_level_channels: 48
+  loss:
+    class_path: skyscapesnet.losses.loss.SegLoss
+    init_args:
+      n_classes: 20

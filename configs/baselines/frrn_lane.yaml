@@ -1,0 +1,19 @@
+seed_everything: 42
+# FRRN-B: paper Table 4 (SkyScapes-Lane) uses the deeper "FRRN-B" variant
+# (more FRRUs per scale than FRRN-A).
+data:
+  task: lane
+model:
+  task: lane
+  class_weights_path: cache/class_weights_lane.json
+  model:
+    class_path: skyscapesnet.models.baselines.FRRN
+    init_args:
+      n_classes: 13
+      n_units_per_scale: 4
+      n_stem_units: 3
+      n_tail_units: 3
+  loss:
+    class_path: skyscapesnet.losses.loss.SegLoss
+    init_args:
+      n_classes: 13
