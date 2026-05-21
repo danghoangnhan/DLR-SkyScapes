@@ -1,16 +1,18 @@
-"""Verification script: tests forward pass for all models.
-
-Run: python test_models.py
-"""
+"""Verification tests for all models."""
 
 import tempfile
 
 import torch
+import pytest
+
+from skyscapesnet.models.fc_densenet import FCDenseNet
+from skyscapesnet.models.craspp import CRASPP
+from skyscapesnet.models.skyscapesnet import SkyScapesNet
+from skyscapesnet.losses.loss import MultiTaskLoss
+from skyscapesnet.metrics.seg import SemSegMetrics
 
 
 def test_fc_densenet103():
-    from models.fc_densenet import FCDenseNet
-
     model = FCDenseNet(in_channels=3, n_classes=20)
     x = torch.randn(1, 3, 256, 256)
     out = model(x)
@@ -20,8 +22,6 @@ def test_fc_densenet103():
 
 
 def test_fc_densenet_backbone():
-    from models.fc_densenet import FCDenseNet
-
     model = FCDenseNet(in_channels=3, n_classes=None)
     x = torch.randn(1, 3, 256, 256)
     out = model(x)
@@ -30,8 +30,6 @@ def test_fc_densenet_backbone():
 
 
 def test_craspp():
-    from models.craspp import CRASPP
-
     model = CRASPP(in_channels=656, out_channels=240)
     model.eval()  # avoid BN issue with 1x1 spatial
     x = torch.randn(2, 656, 8, 8)
@@ -41,13 +39,12 @@ def test_craspp():
 
 
 def test_skyscapesnet():
-    from models.skyscapesnet import SkyScapesNet
-
     model = SkyScapesNet(in_channels=3, n_classes=20)
     model.eval()
     x = torch.randn(1, 3, 256, 256)
     with torch.no_grad():
-        seg, multi_edge, binary_edge = model(x)
+        out = model(x)
+    seg, multi_edge, binary_edge = out.seg, out.multi_edge, out.binary_edge
     n_params = sum(p.numel() for p in model.parameters())
     assert seg.shape == (1, 20, 256, 256), f"seg: {seg.shape}"
     assert multi_edge.shape == (1, 20, 256, 256), f"multi_edge: {multi_edge.shape}"
@@ -57,42 +54,50 @@ def test_skyscapesnet():
 
 
 def test_losses():
-    from losses.loss import MultiTaskLoss
-
+    from skyscapesnet.models.outputs import SkyScapesOutput
     criterion = MultiTaskLoss(n_classes=20)
     seg_pred = torch.randn(2, 20, 64, 64, requires_grad=True)
     multi_edge_pred = torch.randn(2, 20, 64, 64, requires_grad=True)
     binary_edge_pred = torch.randn(2, 1, 64, 64, requires_grad=True)
+    out = SkyScapesOutput(seg=seg_pred, multi_edge=multi_edge_pred, binary_edge=binary_edge_pred)
     seg_target = torch.randint(0, 20, (2, 64, 64))
 
-    loss, loss_dict = criterion(
-        seg_pred, multi_edge_pred, binary_edge_pred, seg_target,
-    )
+    loss, loss_dict = criterion(out, seg_target)
     assert loss.requires_grad, "Loss should require grad for backprop"
     print(f"[PASS] MultiTaskLoss | Total: {loss.item():.4f} | Components: {loss_dict}")
 
 
 def test_metrics():
-    from utils.metrics import ConfusionMatrix
-
-    cm = ConfusionMatrix(5)
+    metrics = SemSegMetrics(n_classes=5)
     pred = torch.tensor([0, 1, 2, 3, 4, 0, 1])
     target = torch.tensor([0, 1, 2, 3, 4, 1, 0])
-    cm.update(pred, target)
-    miou = cm.mean_iou()
-    acc = cm.pixel_accuracy()
-    print(f"[PASS] ConfusionMatrix | mIoU: {miou:.4f} | Acc: {acc:.4f}")
+    metrics.update(pred, target)
+    out = metrics.compute()
+    miou = out["miou"].item()
+    acc = out["pixel_acc"].item()
+    assert 0.0 <= miou <= 1.0
+    assert 0.0 <= acc <= 1.0
+    print(f"[PASS] SemSegMetrics | mIoU: {miou:.4f} | Acc: {acc:.4f}")
+
+
+def test_skyscapesnet_without_edge_heads():
+    model = SkyScapesNet(in_channels=3, n_classes=13, growth_rate=16, use_edge_heads=False)
+    model.eval()
+    x = torch.randn(1, 3, 64, 64)
+    with torch.no_grad():
+        out = model(x)
+    assert out.seg.shape == (1, 13, 64, 64)
+    assert out.multi_edge is None
+    assert out.binary_edge is None
 
 
 def test_hub_roundtrip():
-    from models.skyscapesnet import SkyScapesNet
-
     # Create model and get a reference output
     model = SkyScapesNet(in_channels=3, n_classes=20, growth_rate=16)  # small for speed
     model.eval()
     x = torch.randn(1, 3, 64, 64)
     with torch.no_grad():
-        orig_seg, _, _ = model(x)
+        orig_seg = model(x).seg
 
     # Save and reload
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -100,36 +105,7 @@ def test_hub_roundtrip():
         loaded = SkyScapesNet.from_pretrained(tmp_dir)
         loaded.eval()
         with torch.no_grad():
-            loaded_seg, _, _ = loaded(x)
+            loaded_seg = loaded(x).seg
 
     assert torch.allclose(orig_seg, loaded_seg, atol=1e-6), "Weights not preserved!"
     print(f"[PASS] PyTorchModelHubMixin save/load round-trip | Outputs match")
-
-
-if __name__ == "__main__":
-    print("=" * 60)
-    print("SkyScapesNet Model Verification")
-    print("=" * 60)
-
-    tests = [
-        ("FC-DenseNet103", test_fc_densenet103),
-        ("FC-DenseNet103 backbone", test_fc_densenet_backbone),
-        ("CRASPP", test_craspp),
-        ("SkyScapesNet", test_skyscapesnet),
-        ("Losses", test_losses),
-        ("Metrics", test_metrics),
-        ("Hub round-trip", test_hub_roundtrip),
-    ]
-
-    passed = 0
-    failed = 0
-    for name, test_fn in tests:
-        try:
-            test_fn()
-            passed += 1
-        except Exception as e:
-            print(f"[FAIL] {name}: {e}")
-            failed += 1
-
-    print("=" * 60)
-    print(f"Results: {passed} passed, {failed} failed")

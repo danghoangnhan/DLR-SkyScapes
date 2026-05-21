@@ -12,7 +12,7 @@ Reference: "SkyScapes — Fine-Grained Semantic Understanding of Aerial Scenes"
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .layers import SeparableConv2d
+from .layers import SeparableConv2d, make_norm
 
 
 class FRSR(nn.Module):
@@ -27,7 +27,7 @@ class FRSR(nn.Module):
         pool_size: Downsampling factor for the pooling stream.
     """
 
-    def __init__(self, channels, pool_size=2):
+    def __init__(self, channels, pool_size=2, norm_layer="batch", gn_groups=32):
         super().__init__()
         self.pool_size = pool_size
 
@@ -36,17 +36,17 @@ class FRSR(nn.Module):
             nn.MaxPool2d(kernel_size=pool_size, stride=pool_size),
             nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
             SeparableConv2d(channels, channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(channels),
+            make_norm(channels, norm_layer, gn_groups),
             nn.ReLU(inplace=True),
             SeparableConv2d(channels, channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(channels),
+            make_norm(channels, norm_layer, gn_groups),
             nn.ReLU(inplace=True),
             nn.Conv2d(channels, channels, kernel_size=1, bias=False),
         )
 
         # Residual stream: lightweight processing to maintain full resolution
         self.residual_stream = nn.Sequential(
-            nn.BatchNorm2d(channels),
+            make_norm(channels, norm_layer, gn_groups),
             nn.ReLU(inplace=True),
             SeparableConv2d(channels, channels, kernel_size=3, padding=1),
         )

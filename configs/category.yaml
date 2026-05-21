@@ -1,0 +1,15 @@
+seed_everything: 42
+data:
+  task: category
+model:
+  task: category
+  class_weights_path: cache/class_weights_category.json
+  model:
+    class_path: skyscapesnet.models.SkyScapesNet
+    init_args:
+      n_classes: 11
+      use_edge_heads: false
+  loss:
+    class_path: skyscapesnet.losses.loss.SegLoss
+    init_args:
+      n_classes: 11

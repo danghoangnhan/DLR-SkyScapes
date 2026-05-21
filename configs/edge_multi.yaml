@@ -1,0 +1,14 @@
+# Eval-only: load a Dense checkpoint, evaluate its multi_edge head.
+data:
+  task: dense
+model:
+  task: dense
+  model:
+    class_path: skyscapesnet.models.SkyScapesNet
+    init_args:
+      n_classes: 20
+      use_edge_heads: true
+  loss:
+    class_path: skyscapesnet.losses.loss.MultiTaskLoss
+    init_args:
+      n_classes: 20

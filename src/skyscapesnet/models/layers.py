@@ -12,6 +12,28 @@ Reference:
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.utils.checkpoint
+
+
+def make_norm(channels: int, norm_layer: str = "batch", gn_groups: int = 32) -> nn.Module:
+    """Factory for the configurable normalization layer.
+
+    Args:
+        channels: Number of channels.
+        norm_layer: One of "batch", "group", "instance".
+        gn_groups: Number of groups for GroupNorm (clamped to <=channels).
+    """
+    if norm_layer == "batch":
+        return nn.BatchNorm2d(channels)
+    elif norm_layer == "group":
+        groups = min(gn_groups, channels)
+        # Find largest divisor <= groups
+        while channels % groups != 0 and groups > 1:
+            groups -= 1
+        return nn.GroupNorm(num_groups=groups, num_channels=channels)
+    elif norm_layer == "instance":
+        return nn.InstanceNorm2d(channels, affine=True)
+    raise ValueError(f"Unknown norm_layer: {norm_layer!r}")
 
 
 # =============================================================================
@@ -43,10 +65,11 @@ class SeparableConv2d(nn.Module):
 class DenseLayer(nn.Module):
     """Original Tiramisu layer: BN -> ReLU -> Conv3x3 -> Dropout."""
 
-    def __init__(self, in_channels, growth_rate, dropout_p=0.2):
+    def __init__(self, in_channels, growth_rate, dropout_p=0.2,
+                 norm_layer="batch", gn_groups=32):
         super().__init__()
         self.layer = nn.Sequential(
-            nn.BatchNorm2d(in_channels),
+            make_norm(in_channels, norm_layer, gn_groups),
             nn.ReLU(inplace=True),
             nn.Conv2d(in_channels, growth_rate, kernel_size=3, padding=1, bias=False),
             nn.Dropout2d(p=dropout_p),
@@ -62,12 +85,16 @@ class DenseBlock(nn.Module):
     Returns (all_features, new_features_only).
     """
 
-    def __init__(self, n_layers, in_channels, growth_rate, dropout_p=0.2):
+    def __init__(self, n_layers, in_channels, growth_rate, dropout_p=0.2,
+                 norm_layer="batch", gn_groups=32):
         super().__init__()
         self.layers = nn.ModuleList()
         for i in range(n_layers):
             self.layers.append(
-                DenseLayer(in_channels + i * growth_rate, growth_rate, dropout_p)
+                DenseLayer(
+                    in_channels + i * growth_rate, growth_rate, dropout_p,
+                    norm_layer=norm_layer, gn_groups=gn_groups,
+                )
             )
 
     def forward(self, x):
@@ -83,10 +110,11 @@ class DenseBlock(nn.Module):
 class TransitionDown(nn.Module):
     """Original Tiramisu Transition Down: BN -> ReLU -> Conv1x1 -> Dropout -> MaxPool2x2."""
 
-    def __init__(self, in_channels, dropout_p=0.2):
+    def __init__(self, in_channels, dropout_p=0.2,
+                 norm_layer="batch", gn_groups=32):
         super().__init__()
         self.layer = nn.Sequential(
-            nn.BatchNorm2d(in_channels),
+            make_norm(in_channels, norm_layer, gn_groups),
             nn.ReLU(inplace=True),
             nn.Conv2d(in_channels, in_channels, kernel_size=1, bias=False),
             nn.Dropout2d(p=dropout_p),
@@ -125,10 +153,11 @@ class SeparableLayer(nn.Module):
     Returns only NEW feature maps.
     """
 
-    def __init__(self, in_channels, growth_rate, dropout_p=0.2):
+    def __init__(self, in_channels, growth_rate, dropout_p=0.2,
+                 norm_layer="batch", gn_groups=32):
         super().__init__()
         self.layer = nn.Sequential(
-            nn.BatchNorm2d(in_channels),
+            make_norm(in_channels, norm_layer, gn_groups),
             nn.ReLU(inplace=True),
             nn.Conv2d(in_channels, growth_rate, kernel_size=3, padding=1, bias=False),
             SeparableConv2d(growth_rate, growth_rate, kernel_size=3, padding=1),
@@ -151,15 +180,20 @@ class FullyDenseBlock(nn.Module):
     Returns (all_features, new_features_only).
     """
 
-    def __init__(self, n_layers, in_channels, growth_rate, dropout_p=0.2):
+    def __init__(self, n_layers, in_channels, growth_rate, dropout_p=0.2,
+                 norm_layer="batch", gn_groups=32, use_checkpointing=False):
         super().__init__()
         self.n_layers = n_layers
         self.growth_rate = growth_rate
+        self.use_checkpointing = use_checkpointing
 
         self.layers = nn.ModuleList()
         for i in range(n_layers):
             self.layers.append(
-                SeparableLayer(in_channels + i * growth_rate, growth_rate, dropout_p)
+                SeparableLayer(
+                    in_channels + i * growth_rate, growth_rate, dropout_p,
+                    norm_layer=norm_layer, gn_groups=gn_groups,
+                )
             )
 
         # Residual projection for non-adjacent connections:
@@ -177,9 +211,11 @@ class FullyDenseBlock(nn.Module):
     def forward(self, x):
         new_features = []
         for i, layer in enumerate(self.layers):
-            out = layer(x)
+            if self.use_checkpointing and self.training:
+                out = torch.utils.checkpoint.checkpoint(layer, x, use_reentrant=False)
+            else:
+                out = layer(x)
 
-            # Add residual from all previous new features (non-adjacent connections)
             if i > 0 and self.residual_projections is not None:
                 prev_concat = torch.cat(new_features, dim=1)
                 residual = self.residual_projections[i - 1](prev_concat)
@@ -198,10 +234,10 @@ class DownsamplingBlock(nn.Module):
     BN → ReLU → Conv1x1 → SeparableConv3x3 → MaxPool2x2
     """
 
-    def __init__(self, in_channels):
+    def __init__(self, in_channels, norm_layer="batch", gn_groups=32):
         super().__init__()
         self.layer = nn.Sequential(
-            nn.BatchNorm2d(in_channels),
+            make_norm(in_channels, norm_layer, gn_groups),
             nn.ReLU(inplace=True),
             nn.Conv2d(in_channels, in_channels, kernel_size=1, bias=False),
             SeparableConv2d(in_channels, in_channels, kernel_size=3, padding=1),

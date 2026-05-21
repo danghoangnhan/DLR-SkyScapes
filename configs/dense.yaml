@@ -1,0 +1,19 @@
+seed_everything: 42
+data:
+  task: dense
+model:
+  task: dense
+  class_weights_path: cache/class_weights_dense.json
+  model:
+    class_path: skyscapesnet.models.SkyScapesNet
+    init_args:
+      n_classes: 20
+      norm_layer: batch
+      use_edge_heads: true
+      use_checkpointing: false
+  loss:
+    class_path: skyscapesnet.losses.loss.MultiTaskLoss
+    init_args:
+      n_classes: 20
+      lambda_multi: 1.0
+      lambda_binary: 1.0

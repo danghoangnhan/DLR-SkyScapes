@@ -106,7 +106,7 @@ class WeightedCrossEntropyLoss(nn.Module):
         if class_weights is not None:
             self.register_buffer("class_weights", class_weights)
         else:
-            self.class_weights = None
+            self.register_buffer("class_weights", None)
 
     def forward(self, logits, targets):
         return F.cross_entropy(
@@ -159,23 +159,32 @@ class MultiTaskLoss(nn.Module):
     def __init__(self, n_classes, class_weights=None, lambda_multi=1.0,
                  lambda_binary=1.0, ignore_index=255):
         super().__init__()
+        if class_weights is not None:
+            class_weights = torch.as_tensor(class_weights, dtype=torch.float32)
         self.ce_loss = WeightedCrossEntropyLoss(class_weights, ignore_index)
         self.iou_loss = SoftIoULoss(n_classes, ignore_index)
         self.lambda_multi = lambda_multi
         self.lambda_binary = lambda_binary
         self.ignore_index = ignore_index
+        # Mirror SegLoss API: expose class_weights buffer (used by ScheduledClassWeightsCallback)
+        self.register_buffer(
+            "class_weights",
+            torch.ones(n_classes) if class_weights is None else class_weights,
+        )
 
-    def forward(self, seg_logits, multi_edge_logits, binary_edge_logits,
-                seg_targets, edge_targets=None):
+    def forward(self, output, seg_targets, edge_targets=None):
         """
         Args:
-            seg_logits: (N, C, H, W) segmentation logits.
-            multi_edge_logits: (N, C, H, W) multi-class edge logits.
-            binary_edge_logits: (N, 1, H, W) binary edge logits.
+            output: SkyScapesOutput with seg + multi_edge + binary_edge populated.
             seg_targets: (N, H, W) integer class labels.
             edge_targets: (N, H, W) integer edge labels (optional).
-                If None, edge labels are derived from seg_targets boundaries.
         """
+        seg_logits = output.seg
+        multi_edge_logits = output.multi_edge
+        binary_edge_logits = output.binary_edge
+        assert multi_edge_logits is not None and binary_edge_logits is not None, (
+            "MultiTaskLoss requires both edge heads — use SegLoss for single-task benchmarks"
+        )
         # Segmentation loss: CE + Soft-IoU
         seg_ce = self.ce_loss(seg_logits, seg_targets)
         seg_iou = self.iou_loss(seg_logits, seg_targets)
@@ -252,3 +261,39 @@ def compute_class_weights(dataset, n_classes, method="inverse_freq"):
         raise ValueError(f"Unknown method: {method}")
 
     return weights.float()
+
+
+class SegLoss(nn.Module):
+    """Single-head segmentation loss: CE + Soft-IoU.
+
+    Used for Lane-13 / Category-11 benchmarks that have no edge heads.
+
+    Args:
+        n_classes: Number of segmentation classes.
+        class_weights: Optional per-class weights (tensor or list).
+        ignore_index: Class index to ignore (default: 255).
+    """
+
+    def __init__(self, n_classes, class_weights=None, ignore_index=255):
+        super().__init__()
+        if class_weights is not None:
+            class_weights = torch.as_tensor(class_weights, dtype=torch.float32)
+        self.ce_loss = WeightedCrossEntropyLoss(class_weights, ignore_index)
+        self.iou_loss = SoftIoULoss(n_classes, ignore_index)
+        # Mirror MultiTaskLoss API: expose class_weights buffer
+        self.register_buffer(
+            "class_weights",
+            torch.ones(n_classes) if class_weights is None else class_weights,
+        )
+
+    def forward(self, output, target, edge_targets=None):
+        """
+        Args:
+            output: SkyScapesOutput (only .seg is consulted).
+            target: (N, H, W) integer class labels.
+            edge_targets: ignored; accepted for interface symmetry.
+        """
+        seg_ce = self.ce_loss(output.seg, target)
+        seg_iou = self.iou_loss(output.seg, target)
+        loss = seg_ce + seg_iou
+        return loss, {"seg_ce": seg_ce.item(), "seg_iou": seg_iou.item()}

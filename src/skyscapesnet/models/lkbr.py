@@ -29,9 +29,11 @@ class LKBR(nn.Module):
         channels: Number of input channels in the skip connection.
     """
 
-    def __init__(self, channels):
+    def __init__(self, channels, norm_layer="batch", gn_groups=32):
         super().__init__()
         self.channels = channels
+        # LKBR has no batchnorm layers in the original design; accept these
+        # kwargs to keep the API uniform across submodules.
 
         # Stream 1: large-kernel decomposition (3x1 + 1x3)
         self.stream1_h = nn.Conv2d(
